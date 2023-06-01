@@ -11,7 +11,10 @@ module.exports = async ({getNamedAccounts, deployments}) => {
     const {deploy, log} = deployments
     const {deployer} = await getNamedAccounts()
     const chainId = network.config.chainId
-    const args = []
+    const asset = "0xe96A22092FE7812D301D6bD78eC3E1E733a8D442"
+    const name = "VAUU"
+    const symbol = "VAU"
+    const args = [asset, name, symbol]
     // setting conditionals for the network to be deployed to
     const ERC4626 = await deploy("ERC4626Vault", {
         from: deployer,

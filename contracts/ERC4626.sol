@@ -1,54 +1,70 @@
-// SPDX-License-Identifier: MIT
+//SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-contract ERC4626Vault {
-    mapping(address => uint256) private balances;
-    address private owner;
+// Import the necessary files and lib
+import "./IERC4626.sol";
+import "./IERC20.sol";
+import "./ERC20.sol";
 
-    event Deposit(address indexed account, uint256 amount);
-    event Withdrawal(address indexed account, uint256 amount);
+contract ERC4626Vault is IERC4626, ERC20 {
+    // create an event that will the withdraw and deposit function
+    event Deposit(address caller, uint256 amt);
+    event Withdraw(address caller, address receiver, uint256 amt, uint256 shares);
 
-    constructor() {
-        owner = msg.sender;
+    // create your variables and immutables
+    ERC20 public immutable asset;
+
+// a mapping that checks if a user has deposited
+    mapping(address => uint256) public shareHolder;
+
+    constructor(ERC20 _underlying, string memory _name, string memory _symbol )
+     ERC20(_name, _symbol, 18) {
+        asset = _underlying;
     }
 
-    function deposit(uint256 amount) external payable {
-        require(amount > 0, "Amount must be greater than zero");
+    // a deposit function that receives assets from users
+    function deposit(uint256 assets) public {
+        // checks that the deposit is higher than 0
+        require (assets > 0, "Deposit less than Zero");
+        // require(assets <= maxDeposit(receiver), "ERC4626: deposit more than max");
 
-        balances[msg.sender] += amount;
+        asset.transferFrom(msg.sender, address(this), assets);
+        // checks the value of assets the holder has
+                shareHolder[msg.sender] += assets;
+        // mints the reciept(shares)
+        _mint(msg.sender, assets);
 
-        emit Deposit(msg.sender, amount);
+        emit Deposit(msg.sender, assets);
+
+    }
+    // returns total number of assets
+    function totalAssets() public view override returns(uint256) {
+        return asset.balanceOf(address(this));
+    }
+     /** @dev See {IERC4626-maxDeposit}. */
+    function maxDeposit(address) public view virtual override returns (uint256) {
+        return type(uint256).max;
+    }
+    // users to return shares and get thier token back before they can withdraw, and requiers that the user has a deposit
+    function redeem(uint256 shares, address receiver ) internal returns (uint256 assets) {
+        require(shareHolder[msg.sender] > 0, "Not a share holder");
+        require(shareHolder[msg.sender] >= shares, "You cannot exceed your shares balance");
+        shareHolder[msg.sender] -= shares;
+
+        uint256 per = (10 * shares) / 100;
+
+        _burn(msg.sender, shares);
+
+        assets = shares + per;
+
+        emit Withdraw(msg.sender, receiver, assets, per);
+        return assets;
+    }
+    // allow msg.sender to withdraw his deposit plus interest
+
+    function withdraw(uint256 shares, address receiver) public {
+        uint256 payout = redeem(shares, receiver);
+        asset.transfer(receiver, payout);
     }
 
-    function withdraw(uint256 amount) external {
-        require(amount > 0, "Amount must be greater than zero");
-        require(balances[msg.sender] >= amount, "Insufficient balance");
-
-        balances[msg.sender] -= amount;
-
-        emit Withdrawal(msg.sender, amount);
-
-        // Transfer the amount to the caller
-        (bool success, ) = payable(msg.sender).call{value: amount}("");
-        require(success, "Transfer failed");
-    }
-
-    function getBalance(address account) external view returns (uint256) {
-        return balances[account];
-    }
-
-    function getContractBalance() external view returns (uint256) {
-        return address(this).balance;
-    }
-
-    function isOwner() external view returns (bool) {
-        return msg.sender == owner;
-    }
-
-    function transferOwnership(address newOwner) external {
-        require(msg.sender == owner, "Only the owner can transfer ownership");
-        require(newOwner != address(0), "Invalid new owner");
-
-        owner = newOwner;
-    }
 }
